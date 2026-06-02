@@ -138,6 +138,78 @@ create table if not exists mila_exemplos (
 );
 create index if not exists mila_exemplos_ativa_idx on mila_exemplos(ativa, ordem);
 
+-- ──────────────────────────────────────────────────────────────────────────
+-- Integração Clint — cache de conversas do CRM + sugestões de recuperação
+-- ──────────────────────────────────────────────────────────────────────────
+
+-- Cache local de contatos do Clint (espelho mínimo pro analisador)
+create table if not exists clint_contatos (
+  clint_id text primary key,                       -- id do contato no Clint
+  nome text,
+  telefone text,
+  email text,
+  etapa_funil text,                                -- onde está no funil Clint
+  ultima_mensagem_em timestamptz,
+  metadados jsonb,                                 -- payload bruto pra extensão futura
+  sincronizado_em timestamptz default now()
+);
+create index if not exists clint_contatos_telefone_idx on clint_contatos(telefone);
+create index if not exists clint_contatos_ultima_msg_idx on clint_contatos(ultima_mensagem_em desc);
+
+-- Cache de chats (uma "thread" de WhatsApp com um contato)
+create table if not exists clint_chats (
+  clint_id text primary key,
+  contato_clint_id text references clint_contatos(clint_id) on delete cascade,
+  canal text,                                       -- whatsapp, instagram, etc
+  status text,
+  ultima_mensagem_em timestamptz,
+  metadados jsonb,
+  sincronizado_em timestamptz default now()
+);
+create index if not exists clint_chats_contato_idx on clint_chats(contato_clint_id);
+
+-- Cache de mensagens individuais
+create table if not exists clint_mensagens (
+  clint_id text primary key,
+  chat_clint_id text references clint_chats(clint_id) on delete cascade,
+  direcao text check (direcao in ('entrada', 'saida')),   -- cliente → vendedor / vendedor → cliente
+  autor text,                                       -- nome de quem mandou (vendedor) ou número (cliente)
+  conteudo text,
+  tipo text,                                        -- text, image, audio, document, ...
+  midia_url text,
+  enviada_em timestamptz,
+  metadados jsonb,
+  sincronizado_em timestamptz default now()
+);
+create index if not exists clint_mensagens_chat_idx on clint_mensagens(chat_clint_id, enviada_em);
+
+-- Sugestões de retomada/recuperação geradas pela Mila
+create table if not exists mila_recuperacao (
+  id uuid primary key default gen_random_uuid(),
+  contato_clint_id text not null references clint_contatos(clint_id) on delete cascade,
+  chat_clint_id text references clint_chats(clint_id) on delete set null,
+  -- diagnóstico
+  calor text check (calor in ('quente', 'morno', 'frio', 'perdido')),
+  etapa_parou text,                                 -- 'aquecimento' | 'qualificacao' | 'orcamento' | 'negociacao' | 'fechamento' | etc
+  dias_sem_resposta integer,
+  diagnostico text,                                  -- análise em texto livre
+  pontos_fortes jsonb default '[]'::jsonb,
+  oportunidades_perdidas jsonb default '[]'::jsonb,
+  -- proposta de ação
+  texto_sugerido text not null,
+  midia_sugerida text,                              -- ex: 'paleta_cores' | 'dados_fechamento' | 'pix_pagamento'
+  -- status
+  status text default 'pendente' check (status in ('pendente', 'aprovada', 'enviada', 'descartada', 'falhou')),
+  motivo_descarte text,
+  enviada_em timestamptz,
+  resposta_recebida_em timestamptz,                 -- preenchido se o cliente responder após envio
+  -- tracking
+  criada_em timestamptz default now(),
+  atualizada_em timestamptz default now()
+);
+create index if not exists mila_recuperacao_status_idx on mila_recuperacao(status, criada_em desc);
+create index if not exists mila_recuperacao_contato_idx on mila_recuperacao(contato_clint_id);
+
 -- View útil pro admin dashboard
 create or replace view leads_resumo as
 select

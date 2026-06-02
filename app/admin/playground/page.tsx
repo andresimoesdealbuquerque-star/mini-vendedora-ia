@@ -3,8 +3,9 @@
 import { useState } from "react";
 import { AbaTestar } from "./_components/AbaTestar";
 import { AbaEnsinar } from "./_components/AbaEnsinar";
+import { AbaRecuperar } from "./_components/AbaRecuperar";
 
-type Tab = "testar" | "ensinar";
+type Tab = "testar" | "ensinar" | "recuperar";
 
 export default function Playground() {
   const [tab, setTab] = useState<Tab>("testar");
@@ -25,9 +26,14 @@ export default function Playground() {
         <button onClick={() => setTab("ensinar")} style={tabStyle(tab === "ensinar")}>
           🎓 Ensinar
         </button>
+        <button onClick={() => setTab("recuperar")} style={tabStyle(tab === "recuperar")}>
+          🔥 Recuperar
+        </button>
       </div>
 
-      {tab === "testar" ? <AbaTestar /> : <AbaEnsinar />}
+      {tab === "testar" && <AbaTestar />}
+      {tab === "ensinar" && <AbaEnsinar />}
+      {tab === "recuperar" && <AbaRecuperar />}
     </main>
   );
 }
