@@ -11,6 +11,7 @@
 
 import { supabase } from "@/lib/db/client";
 import { listarChatsDoContato, listarMensagensDoChat } from "@/lib/clint/client";
+import { transcreverAudio } from "./audio";
 import type { ChatComContexto } from "./tipos";
 
 const CANAL_OFICIAL = "26eb4825-f226-4ec3-94bc-d91f468e9510"; // ZAP MINI 26
@@ -90,13 +91,28 @@ export async function detectarMensagensNovas(opts: {
       .maybeSingle();
 
     const eImagem = (ultima.content_type === "IMAGE" || (ultima as any).content_type === "IMAGE") && !!ultima.content_url;
+    const eAudio = ultima.content_type === "AUDIO" && !!ultima.content_url;
+
+    // Se for áudio, transcreve via Groq Whisper e usa como conteúdo
+    let transcricaoUltima: string | null = null;
+    if (eAudio) {
+      const r = await transcreverAudio(ultima.content_url);
+      if (r.ok && r.texto) {
+        transcricaoUltima = r.texto;
+      } else {
+        erros.push(`transcrever ${ultima.id}: ${r.erro}`);
+      }
+    }
+
     const conteudoUltima = ultima.content?.trim()
       ? ultima.content
-      : eImagem
-        ? "[imagem enviada]"
-        : ultima.content_type === "AUDIO"
-          ? "[áudio enviado — não consigo ouvir, peça pro cliente escrever]"
-          : "[mídia enviada]";
+      : transcricaoUltima
+        ? `[áudio transcrito]: ${transcricaoUltima}`
+        : eImagem
+          ? "[imagem enviada]"
+          : eAudio
+            ? "[áudio enviado — não consegui transcrever, pergunte por escrito]"
+            : "[mídia enviada]";
 
     msgsNovas.push({
       chat_id: chat.clint_id,
@@ -111,7 +127,16 @@ export async function detectarMensagensNovas(opts: {
       historico: msgs.slice(-20).map((m: any) => {
         const tipoMsg = m.content_type || m.type || "TEXT";
         let conteudo = m.content ?? "";
-        if (!conteudo.trim()) {
+
+        // Última msg de áudio já foi transcrita acima; reaproveita.
+        // Áudios anteriores viram marcador (evita transcrever tudo toda rodada).
+        if (tipoMsg === "AUDIO" && m.type === "CUSTOMER") {
+          if (m.id === ultima.id && transcricaoUltima) {
+            conteudo = `[áudio transcrito]: ${transcricaoUltima}`;
+          } else {
+            conteudo = "[áudio anterior — se cliente citar, peça pra repetir por escrito]";
+          }
+        } else if (!conteudo.trim()) {
           if (tipoMsg === "IMAGE") conteudo = "[imagem]";
           else if (tipoMsg === "AUDIO") conteudo = "[áudio]";
           else if (tipoMsg === "VIDEO") conteudo = "[vídeo]";
