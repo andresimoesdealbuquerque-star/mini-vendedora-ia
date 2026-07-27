@@ -69,10 +69,13 @@ export async function detectarMensagensNovas(opts: {
 
     if (msgs.length === 0) continue;
 
-    const ultima = msgs[msgs.length - 1];
-    // Ignora se a última é da vendedora (user_id preenchido) — cliente ainda não respondeu
-    if (ultima.user_id) continue;
-    // Ignora eventos (não são mensagens de texto)
+    const ultima = msgs[msgs.length - 1] as any;
+    // Só responde se a ÚLTIMA mensagem foi do CLIENTE.
+    // Clint marca: type=CUSTOMER → cliente | type=USER → vendedor/Mila/API
+    // source=API → foi enviado por integração (a própria Mila)
+    if (ultima.type !== "CUSTOMER") continue;
+    if (ultima.source === "API") continue;   // dupla proteção contra loop
+    // Ignora eventos e mensagens sem texto
     if (ultima.type === "EVENT" || !ultima.content?.trim()) continue;
     // Ignora se já processamos essa mensagem
     if (estado?.ultima_msg_processada_id === ultima.id) continue;
@@ -93,8 +96,9 @@ export async function detectarMensagensNovas(opts: {
       ultima_msg_cliente_id: ultima.id,
       ultima_msg_cliente: ultima.content,
       ultima_msg_cliente_em: ultima.created_at ?? new Date().toISOString(),
-      historico: msgs.slice(-20).map((m) => ({
-        direcao: m.user_id ? "saida" : "entrada",
+      historico: msgs.slice(-20).map((m: any) => ({
+        // type=CUSTOMER = cliente (entrada); qualquer outro (USER, SYSTEM) = saída
+        direcao: (m.type === "CUSTOMER") ? "entrada" as const : "saida" as const,
         conteudo: m.content ?? "",
         enviada_em: m.created_at ?? "",
       })),

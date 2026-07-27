@@ -117,12 +117,12 @@ export async function sincronizarUltimos90Dias(opts: {
       if (!respMsgs.ok) { erros.push(`msgs ${ch.id}: ${respMsgs.erro}`); continue; }
       const msgs = (respMsgs.data.data ?? respMsgs.data.items ?? []);
       if (msgs.length === 0) continue;
-      const linhasMsgs = msgs.map((m) => ({
+      const linhasMsgs = msgs.map((m: any) => ({
         clint_id: m.id,
         chat_clint_id: ch.id,
-        // user_id preenchido = vendedora; null = cliente
-        direcao: m.user_id ? "saida" : "entrada",
-        autor: m.user_id ?? null,                 // só o id; nome do vendedor pode ser resolvido depois
+        // Clint usa type=CUSTOMER pra cliente; qualquer outro (USER com source CHAT ou API) = vendedor/Mila
+        direcao: m.type === "CUSTOMER" ? "entrada" : "saida",
+        autor: m.user_id ?? null,
         conteudo: m.content ?? null,
         tipo: m.content_type ?? m.type ?? "text",
         midia_url: m.content_url ?? null,

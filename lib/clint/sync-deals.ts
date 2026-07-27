@@ -107,10 +107,11 @@ export async function sincronizarPorDeals(opts: {
       if (!respMsgs.ok) { erros.push(`msgs ${ch.id}: ${respMsgs.erro}`); continue; }
       const msgs = (respMsgs.data.data ?? []);
       if (msgs.length === 0) continue;
-      const linhasMsgs = msgs.map((m) => ({
+      const linhasMsgs = msgs.map((m: any) => ({
         clint_id: m.id,
         chat_clint_id: ch.id,
-        direcao: m.user_id ? "saida" : "entrada",
+        // Clint usa `type=CUSTOMER` pra cliente e `type=USER` (com source=CHAT ou API) pra vendedor/Mila
+        direcao: m.type === "CUSTOMER" ? "entrada" : "saida",
         autor: m.user_id ?? null,
         conteudo: m.content ?? null,
         tipo: m.content_type ?? m.type ?? "text",
