@@ -443,15 +443,17 @@ export function buildSystemPrompt(): string {
  * que o time cadastra via /admin/playground (aba "Ensinar").
  */
 import { carregarConhecimento, formatarConhecimentoComoTexto } from "./conhecimento";
+import { CATALOGO_2026 } from "./conhecimento/catalogo-2026";
 
 export async function buildSystemPromptComConhecimento(): Promise<string> {
   const base = buildSystemPrompt();
+  const partes: string[] = [base, CATALOGO_2026];
   try {
     const c = await carregarConhecimento();
     const extra = formatarConhecimentoComoTexto(c);
-    if (extra.trim()) return `${base}\n\n${extra}`;
+    if (extra.trim()) partes.push(extra);
   } catch (e) {
     console.warn("[system-prompt] não foi possível carregar conhecimento:", e);
   }
-  return base;
+  return partes.join("\n\n");
 }
