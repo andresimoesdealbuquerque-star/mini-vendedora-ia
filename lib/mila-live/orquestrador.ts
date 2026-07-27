@@ -10,7 +10,7 @@ import { eHorarioHumano, descrevHorario } from "@/lib/horario";
 import { detectarMensagensNovas, marcarProcessada, marcarAguardandoAutorizacao } from "./detector";
 import { gerarRespostaMila } from "./responder";
 import { pedirAutorizacao, processarAutorizacoesPendentes } from "./autorizacao";
-import { enviarViaContato } from "@/lib/clint/send";
+import { enviarViaContato, enviarImagemViaContato } from "@/lib/clint/send";
 import { sincronizarPorDeals } from "@/lib/clint/sync-deals";
 
 interface Config { ativa: boolean; modo_simulacao: boolean; }
@@ -223,6 +223,21 @@ export async function rodarOrquestrador(): Promise<OrquestradorResultado> {
       continue;
     }
 
+    // Envia imagens do catálogo ANTES do texto (WhatsApp mostra em ordem)
+    const imgsEnviadas: string[] = [];
+    const imgsErros: string[] = [];
+    if (rMila.imagens_a_enviar.length > 0 && !cfg.modo_simulacao) {
+      for (const img of rMila.imagens_a_enviar) {
+        const r = await enviarImagemViaContato({
+          contact_id: ctx.contact_id,
+          url: img.url,
+          // caption vazio propositalmente — Mila comenta no texto que vem depois
+        });
+        if (r.ok) imgsEnviadas.push(img.url);
+        else imgsErros.push(`${img.url}: ${r.erro}`);
+      }
+    }
+
     // Resposta normal → envia direto
     const send = cfg.modo_simulacao ? { ok: true, message_id: "SIMULADO" } : await enviarViaContato({
       contact_id: ctx.contact_id, message: rMila.texto,
@@ -234,12 +249,15 @@ export async function rodarOrquestrador(): Promise<OrquestradorResultado> {
       contato_nome: ctx.contato_nome,
       mensagem_cliente: ctx.ultima_msg_cliente,
       mensagem_cliente_em: ctx.ultima_msg_cliente_em,
-      resposta_mila: rMila.texto,
+      resposta_mila: rMila.imagens_a_enviar.length
+        ? `📎 ${rMila.imagens_a_enviar.length} img(s) do catálogo + ${rMila.texto}`
+        : rMila.texto,
       resposta_enviada_em: send.ok ? new Date().toISOString() : null,
       status: cfg.modo_simulacao ? "simulada" : (send.ok ? "enviada" : "falhou"),
       motivo_escalacao: send.ok ? null : (send as any).erro,
       clint_message_id: (send as any).message_id ?? null,
     });
+    if (imgsErros.length) erros.push(...imgsErros.map((e) => `img catalogo: ${e}`));
     await marcarProcessada(ctx.chat_id, ctx.ultima_msg_cliente_id);
     if (send.ok) respostas_enviadas++;
   }

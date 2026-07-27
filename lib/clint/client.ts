@@ -189,6 +189,25 @@ export async function enviarMensagem(input: {
   });
 }
 
+/**
+ * Envia IMAGEM via URL pública. Clint suporta caption.
+ * Mesma janela 24h que /text.
+ */
+export async function enviarMensagemImagem(input: {
+  chat_id: string;
+  channel_account_id: string;
+  contact_id: string;
+  url: string;
+  caption?: string;
+}) {
+  return clintFetch<{
+    data: { success: boolean; message_id: string; chat_id: string; status: string };
+  }>(`/v2/messages/image`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
 /** Busca contatos por telefone (útil pra achar duplicatas). */
 export async function buscarContatosPorTelefone(fullPhone: string) {
   const ddi = fullPhone.startsWith("+") ? fullPhone.slice(1, 3) : fullPhone.slice(0, 2);

@@ -61,12 +61,27 @@ export interface RespostaMila {
   texto: string;
   fragments: string[];
   trace: Array<{ tool: string; input: unknown; output: unknown }>;
+  imagens_a_enviar: Array<{ url: string; caption?: string }>;
   intent_detectado: {
     fechamento: boolean;
     desconto_alem_padrao: null | { pct: number; valor?: number };
     reclamacao: string | null;
   };
   tokens: { input: number; output: number; cache_read: number };
+}
+
+/** Extrai as imagens do catálogo que a Mila pediu pra enviar (uso da tool mostrar_catalogo). */
+function extrairImagensCatalogo(trace: Array<{ tool: string; input: unknown; output: unknown }>): Array<{ url: string; caption?: string }> {
+  const imgs: Array<{ url: string; caption?: string }> = [];
+  for (const t of trace) {
+    if (t.tool !== "mostrar_catalogo") continue;
+    const out = t.output as any;
+    if (!out?.enviadas) continue;
+    for (const p of out.enviadas as Array<{ url: string; rotulo: string }>) {
+      if (p?.url) imgs.push({ url: p.url, caption: p.rotulo });
+    }
+  }
+  return imgs;
 }
 
 export async function gerarRespostaMila(ctx: ChatComContexto): Promise<RespostaMila | { erro: string }> {
@@ -146,6 +161,7 @@ export async function gerarRespostaMila(ctx: ChatComContexto): Promise<RespostaM
       texto,
       fragments: fragments.length ? fragments : [texto],
       trace,
+      imagens_a_enviar: extrairImagensCatalogo(trace),
       intent_detectado: {
         fechamento: detectarPropostaFechamento(trace, texto),
         desconto_alem_padrao: (() => {

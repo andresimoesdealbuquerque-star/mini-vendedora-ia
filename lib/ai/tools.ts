@@ -11,6 +11,7 @@ import { avaliarDesconto } from "@/lib/pricing/discount";
 import { calcularFrete } from "@/lib/pricing/frete";
 import { atualizarLead, agendarVisita, passarParaHumano, registrarPedido } from "@/lib/db/leads";
 import { obterMidia, MIDIAS } from "@/lib/midia/midias";
+import { PAGINAS_CATALOGO, SLUGS_DISPONIVEIS, urlCatalogo, rotuloCatalogo } from "@/lib/ai/conhecimento/paginas-catalogo";
 import { MODELOS, CORES, PUXADOR_TIPOS, PUXADOR_CORES, ADICIONAIS_BOOLEAN, ADICIONAIS_QUANTIDADE } from "@/lib/pricing/catalogo";
 
 export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
@@ -195,6 +196,32 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
     },
   },
   {
+    name: "mostrar_catalogo",
+    description:
+      `Envia páginas do Catálogo 2026 como IMAGEM no WhatsApp do cliente. Use SEMPRE que o cliente:
+- pedir pra ver algo ("me mostra", "manda uma foto", "quero ver modelos", "tem imagem?")
+- perguntar sobre uma categoria de móvel ("quais racks vocês têm?", "quero ver os buffets")
+- pedir cores ("tem preto?" → mostra a página "cores")
+- ficar em dúvida entre modelos (mostra a página da categoria pra ele escolher A/B/C…)
+
+Escolha os slugs MAIS ESPECÍFICOS possíveis. Ex: cliente pediu "buffet de 3 portas" → use apenas "buffet-3-portas". Se pediu genérico "quero ver buffets" → use os 3: "buffet-2-portas", "buffet-3-portas", "buffet-4-portas".
+
+Slugs disponíveis:\n${Object.entries(PAGINAS_CATALOGO).map(([s, m]) => `- ${s}: ${m.rotulo}`).join("\n")}`,
+    input_schema: {
+      type: "object",
+      properties: {
+        slugs: {
+          type: "array",
+          items: { type: "string", enum: SLUGS_DISPONIVEIS },
+          description: "Uma ou mais páginas do catálogo, na ordem que fazem sentido pro cliente ver.",
+          minItems: 1,
+          maxItems: 4,
+        },
+      },
+      required: ["slugs"],
+    },
+  },
+  {
     name: "passar_para_humano",
     description:
       "Transfere a conversa pra atendente humana. Use quando: cliente pedir explicitamente, conversa travar, pedido fora do padrão (medidas muito diferentes do FORMINI, móvel customizado), reclamação pós-venda, ou cliente prestes a fechar pedido grande.",
@@ -235,6 +262,22 @@ export async function executeTool(
       return registrarPedido(leadId, input as unknown as Parameters<typeof registrarPedido>[1]);
     case "enviar_midia":
       return obterMidia((input as { midia_id: any }).midia_id);
+    case "mostrar_catalogo": {
+      const slugs = (input as { slugs?: string[] }).slugs ?? [];
+      const validos = slugs.filter((s) => urlCatalogo(s));
+      const invalidos = slugs.filter((s) => !urlCatalogo(s));
+      return {
+        enviadas: validos.map((slug) => ({
+          slug,
+          rotulo: rotuloCatalogo(slug),
+          url: urlCatalogo(slug),
+        })),
+        invalidas: invalidos,
+        instrucao_ao_modelo: validos.length
+          ? "Imagens serão anexadas na sua próxima resposta. Comente brevemente o que o cliente está vendo (ex: 'Manda uma olhada, tá tudo nessa página. O modelo D é o maior…') e pergunte o que ele achou."
+          : "Nenhum slug válido — refaça a chamada com um slug da lista acima.",
+      };
+    }
     case "passar_para_humano":
       return passarParaHumano(leadId, input as unknown as Parameters<typeof passarParaHumano>[1]);
     default:

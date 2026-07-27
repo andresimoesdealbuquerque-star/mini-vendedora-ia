@@ -11,6 +11,7 @@ import {
   listarChatsDoContato,
   buscarContatosPorTelefone,
   enviarMensagem,
+  enviarMensagemImagem,
   clintHabilitado,
 } from "./client";
 
@@ -56,6 +57,50 @@ export async function enviarViaContato(opts: {
     channel_account_id: oficial.channel_account_id,
     contact_id: opts.contact_id,
     message: opts.message,
+  });
+  if (!r.ok) return { ok: false, erro: r.erro, status: r.status };
+  return {
+    ok: true,
+    message_id: r.data.data.message_id,
+    chat_id: r.data.data.chat_id,
+  };
+}
+
+/**
+ * Envia IMAGEM por URL pública no WhatsApp OFICIAL de um contato.
+ * Resolve chat_id + channel_account_id automaticamente (mesmo fluxo do texto).
+ */
+export async function enviarImagemViaContato(opts: {
+  contact_id: string;
+  url: string;
+  caption?: string;
+  channel_oficial_id?: string;
+}): Promise<EnvioResultado> {
+  if (!clintHabilitado()) return { ok: false, erro: "CLINT_API_TOKEN não configurada" };
+
+  const chatsResp = await listarChatsDoContato(opts.contact_id, { limit: 20 });
+  if (!chatsResp.ok) return { ok: false, erro: chatsResp.erro };
+
+  const chats = chatsResp.data.data ?? [];
+  const oficial = opts.channel_oficial_id
+    ? chats.find((c) => c.channel_account_id === opts.channel_oficial_id && c.status === "OPEN")
+    : chats
+        .filter((c) => c.status === "OPEN")
+        .sort((a, b) => {
+          const ta = new Date(a.last_message_at || 0).getTime();
+          const tb = new Date(b.last_message_at || 0).getTime();
+          return tb - ta;
+        })[0];
+
+  if (!oficial) return { ok: false, erro: "Nenhum chat aberto pra esse contato" };
+  if (!oficial.channel_account_id) return { ok: false, erro: "Chat sem channel_account_id" };
+
+  const r = await enviarMensagemImagem({
+    chat_id: oficial.id,
+    channel_account_id: oficial.channel_account_id,
+    contact_id: opts.contact_id,
+    url: opts.url,
+    caption: opts.caption,
   });
   if (!r.ok) return { ok: false, erro: r.erro, status: r.status };
   return {
