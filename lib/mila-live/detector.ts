@@ -72,11 +72,13 @@ export async function detectarMensagensNovas(opts: {
     const ultima = msgs[msgs.length - 1] as any;
     // Só responde se a ÚLTIMA mensagem foi do CLIENTE.
     // Clint marca: type=CUSTOMER → cliente | type=USER → vendedor/Mila/API
-    // source=API → foi enviado por integração (a própria Mila)
     if (ultima.type !== "CUSTOMER") continue;
-    if (ultima.source === "API") continue;   // dupla proteção contra loop
-    // Ignora eventos e mensagens sem texto
-    if (ultima.type === "EVENT" || !ultima.content?.trim()) continue;
+    if (ultima.source === "API") continue;                // dupla proteção contra loop
+    if (ultima.content_type === "EVENT") continue;        // evento, não é mensagem
+    // Ignora só se NEM texto NEM mídia
+    const temTexto = !!ultima.content?.trim();
+    const temMidia = !!ultima.content_url;
+    if (!temTexto && !temMidia) continue;
     // Ignora se já processamos essa mensagem
     if (estado?.ultima_msg_processada_id === ultima.id) continue;
 
@@ -87,6 +89,15 @@ export async function detectarMensagensNovas(opts: {
       .eq("clint_id", chat.contato_clint_id)
       .maybeSingle();
 
+    const eImagem = (ultima.content_type === "IMAGE" || (ultima as any).content_type === "IMAGE") && !!ultima.content_url;
+    const conteudoUltima = ultima.content?.trim()
+      ? ultima.content
+      : eImagem
+        ? "[imagem enviada]"
+        : ultima.content_type === "AUDIO"
+          ? "[áudio enviado — não consigo ouvir, peça pro cliente escrever]"
+          : "[mídia enviada]";
+
     msgsNovas.push({
       chat_id: chat.clint_id,
       contact_id: chat.contato_clint_id,
@@ -94,14 +105,26 @@ export async function detectarMensagensNovas(opts: {
       contato_nome: contatoQ.data?.nome ?? null,
       contato_telefone: contatoQ.data?.telefone ?? null,
       ultima_msg_cliente_id: ultima.id,
-      ultima_msg_cliente: ultima.content,
+      ultima_msg_cliente: conteudoUltima,
       ultima_msg_cliente_em: ultima.created_at ?? new Date().toISOString(),
-      historico: msgs.slice(-20).map((m: any) => ({
-        // type=CUSTOMER = cliente (entrada); qualquer outro (USER, SYSTEM) = saída
-        direcao: (m.type === "CUSTOMER") ? "entrada" as const : "saida" as const,
-        conteudo: m.content ?? "",
-        enviada_em: m.created_at ?? "",
-      })),
+      ultima_msg_e_imagem: eImagem,
+      historico: msgs.slice(-20).map((m: any) => {
+        const tipoMsg = m.content_type || m.type || "TEXT";
+        let conteudo = m.content ?? "";
+        if (!conteudo.trim()) {
+          if (tipoMsg === "IMAGE") conteudo = "[imagem]";
+          else if (tipoMsg === "AUDIO") conteudo = "[áudio]";
+          else if (tipoMsg === "VIDEO") conteudo = "[vídeo]";
+          else if (tipoMsg === "DOCUMENT") conteudo = "[documento]";
+        }
+        return {
+          direcao: (m.type === "CUSTOMER") ? "entrada" as const : "saida" as const,
+          conteudo,
+          tipo: tipoMsg,
+          midia_url: m.content_url ?? null,
+          enviada_em: m.created_at ?? "",
+        };
+      }),
     });
   }
 

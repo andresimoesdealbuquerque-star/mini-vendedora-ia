@@ -11,11 +11,14 @@ export interface ChatComContexto {
   contato_nome: string | null;
   contato_telefone: string | null;
   ultima_msg_cliente_id: string;
-  ultima_msg_cliente: string;
+  ultima_msg_cliente: string;       // pode ser "[imagem enviada]" se for foto
   ultima_msg_cliente_em: string;
+  ultima_msg_e_imagem: boolean;      // sinal pro responder pegar vision
   historico: Array<{
     direcao: "entrada" | "saida";
     conteudo: string;
+    tipo?: "TEXT" | "IMAGE" | "AUDIO" | "VIDEO" | "DOCUMENT" | string;
+    midia_url?: string | null;
     enviada_em: string;
   }>;
 }

@@ -73,11 +73,26 @@ export async function gerarRespostaMila(ctx: ChatComContexto): Promise<RespostaM
   // 1. Detecção rápida de escalonamento (antes de gastar tokens)
   const reclamacao = detectarReclamacaoForte(ctx.ultima_msg_cliente);
 
-  // 2. Monta conversation history no formato Claude
-  const messages: Anthropic.MessageParam[] = ctx.historico.map((m) => ({
-    role: m.direcao === "entrada" ? "user" as const : "assistant" as const,
-    content: m.conteudo,
-  }));
+  // 2. Monta conversation history no formato Claude, com IMAGENS quando houver
+  // Só cliente pode enviar imagens (assistant messages sempre text)
+  const messages: Anthropic.MessageParam[] = ctx.historico.map((m) => {
+    if (m.direcao === "entrada" && m.tipo === "IMAGE" && m.midia_url) {
+      return {
+        role: "user" as const,
+        content: [
+          {
+            type: "image" as const,
+            source: { type: "url" as const, url: m.midia_url },
+          },
+          { type: "text" as const, text: m.conteudo || "(imagem enviada pelo cliente)" },
+        ] as any,
+      };
+    }
+    return {
+      role: m.direcao === "entrada" ? "user" as const : "assistant" as const,
+      content: m.conteudo,
+    };
+  });
 
   const trace: Array<{ tool: string; input: unknown; output: unknown }> = [];
   const tokens = { input: 0, output: 0, cache_read: 0 };
