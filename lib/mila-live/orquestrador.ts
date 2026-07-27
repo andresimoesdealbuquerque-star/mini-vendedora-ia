@@ -11,6 +11,7 @@ import { detectarMensagensNovas, marcarProcessada, marcarAguardandoAutorizacao }
 import { gerarRespostaMila } from "./responder";
 import { pedirAutorizacao, processarAutorizacoesPendentes } from "./autorizacao";
 import { enviarViaContato } from "@/lib/clint/send";
+import { sincronizarPorDeals } from "@/lib/clint/sync-deals";
 
 interface Config { ativa: boolean; modo_simulacao: boolean; }
 
@@ -58,6 +59,22 @@ export async function rodarOrquestrador(): Promise<OrquestradorResultado> {
   let respostas_enviadas = 0;
   let autorizacoes_pedidas = 0;
   let escaladas = 0;
+
+  // 0. Sync leve — pega deals com atividade nas últimas 6h pra ter cache fresco
+  //    Sem isso o detector só vê chats antigos.
+  const agora = new Date();
+  const seisHoras = new Date(agora.getTime() - 6 * 60 * 60_000);
+  try {
+    const syncRes = await sincronizarPorDeals({
+      dataInicio: seisHoras.toISOString(),
+      dataFim: agora.toISOString(),
+      maxPaginas: 5,
+      maxDeals: 40,
+    });
+    if ("erro" in syncRes) erros.push(`sync: ${syncRes.erro}`);
+  } catch (e) {
+    erros.push(`sync: ${e instanceof Error ? e.message : "erro"}`);
+  }
 
   // 1. Resolve autorizações pendentes primeiro (pode liberar chats pra ação)
   const autorizacoes_resolvidas = await processarAutorizacoesPendentes();
