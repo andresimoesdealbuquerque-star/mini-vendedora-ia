@@ -83,6 +83,12 @@ export async function detectarMensagensNovas(opts: {
     // Ignora se já processamos essa mensagem
     if (estado?.ultima_msg_processada_id === ultima.id) continue;
 
+    // Debounce: se cliente acabou de digitar (< 25s), espera próximo tick.
+    // Evita responder no meio de uma sequência de msgs e passa a "cadência" mais humana.
+    // Áudio não debouncia — já vem completo.
+    const idadeMs = ultima.created_at ? Date.now() - new Date(ultima.created_at).getTime() : Infinity;
+    if (idadeMs < 25_000 && ultima.content_type !== "AUDIO") continue;
+
     // Monta contexto pra gerador
     const contatoQ = await supabase
       .from("clint_contatos")

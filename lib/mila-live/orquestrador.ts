@@ -49,8 +49,9 @@ export async function rodarOrquestrador(): Promise<OrquestradorResultado> {
              eHorarioHumano: eHorarioHumano(), motivo_saida: "Mila desativada (kill switch)" };
   }
 
-  // Horário humano → sai imediatamente
-  if (eHorarioHumano()) {
+  // Horário humano → sai (a menos que esteja em modo simulação — aí roda em SHADOW
+  // pra comparar com o atendimento humano; nada é enviado ao cliente)
+  if (eHorarioHumano() && !cfg.modo_simulacao) {
     return { timestamp, horario, ativa: true, modo_simulacao: cfg.modo_simulacao,
              eHorarioHumano: true, motivo_saida: "Horário humano — silêncio" };
   }
@@ -144,7 +145,21 @@ export async function rodarOrquestrador(): Promise<OrquestradorResultado> {
   const det = await detectarMensagensNovas({ maxChats: 30 });
   erros.push(...det.erros);
 
+  const umaHoraAtras = new Date(Date.now() - 60 * 60_000).toISOString();
+
   for (const ctx of det.msgs_novas) {
+    // Rate limit: no máximo 8 respostas/hora no mesmo chat.
+    // Barreira contra loop bizarro (cliente respondendo/bot re-respondendo).
+    const contagemQ = await supabase.from("mila_ao_vivo")
+      .select("id", { count: "exact", head: true })
+      .eq("chat_clint_id", ctx.chat_id)
+      .gte("resposta_enviada_em", umaHoraAtras);
+    if ((contagemQ.count ?? 0) >= 8) {
+      erros.push(`rate limit chat ${ctx.chat_id}: 8+ respostas na última hora, pulando`);
+      await marcarProcessada(ctx.chat_id, ctx.ultima_msg_cliente_id);
+      continue;
+    }
+
     // Gera resposta
     const rMila = await gerarRespostaMila(ctx);
     if ("erro" in rMila) { erros.push(`IA ${ctx.chat_id}: ${rMila.erro}`); continue; }
