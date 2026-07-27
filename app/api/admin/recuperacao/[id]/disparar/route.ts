@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/db/client";
-import { enviarMensagem, clintHabilitado } from "@/lib/clint/client";
+import { clintHabilitado } from "@/lib/clint/client";
+import { enviarViaContato } from "@/lib/clint/send";
 
 export const runtime = "nodejs";
 
@@ -30,10 +31,9 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } }) {
   const textoFinal = (body.texto || sug.texto_sugerido || "").trim();
   if (!textoFinal) return NextResponse.json({ erro: "texto vazio" }, { status: 400 });
 
-  const r = await enviarMensagem({
-    chat_id: sug.chat_clint_id ?? undefined,
+  const r = await enviarViaContato({
     contact_id: sug.contato_clint_id,
-    text: textoFinal,
+    message: textoFinal,
   });
 
   if (!r.ok) {

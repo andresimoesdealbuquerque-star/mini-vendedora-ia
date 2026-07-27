@@ -10,12 +10,13 @@
 import { supabase } from "@/lib/db/client";
 import {
   clintHabilitado,
-  listarContatos,
+  listarTodosContatos,
   listarChatsDoContato,
   listarMensagensDoChat,
 } from "./client";
 
 const DEFAULT_DIAS = 90;
+const DEFAULT_MAX_CONTATOS = 50;
 
 export interface SyncResultado {
   fonte: "clint" | "mock";
@@ -23,35 +24,65 @@ export interface SyncResultado {
   chats: number;
   mensagens: number;
   erros: string[];
+  total_no_clint?: number;
+  ignorados_por_limite?: number;
+  periodo?: { desde: string; ate: string };
 }
 
-export async function sincronizarUltimos90Dias(opts: { dias?: number } = {}): Promise<SyncResultado> {
+export async function sincronizarUltimos90Dias(opts: {
+  dias?: number;
+  maxContatos?: number;
+  dataInicio?: string;     // ISO — se fornecido, usa esse em vez de dias
+  dataFim?: string;        // ISO
+  maxPaginas?: number;     // padrão 10, aumentar pra varrer mais contatos
+} = {}): Promise<SyncResultado> {
   const dias = opts.dias ?? DEFAULT_DIAS;
+  const maxContatos = opts.maxContatos ?? DEFAULT_MAX_CONTATOS;
+  const maxPaginas = opts.maxPaginas ?? 10;
 
   if (!clintHabilitado()) {
     return popularMockData();
   }
 
-  const desde = new Date(Date.now() - dias * 24 * 60 * 60 * 1000);
+  const desdeMs = opts.dataInicio
+    ? new Date(opts.dataInicio).getTime()
+    : Date.now() - dias * 24 * 60 * 60 * 1000;
+  const ateMs = opts.dataFim
+    ? new Date(opts.dataFim).getTime()
+    : Date.now();
   const erros: string[] = [];
   let totalContatos = 0;
   let totalChats = 0;
   let totalMensagens = 0;
 
-  // 1. Contatos
-  const respC = await listarContatos({ desde, limite: 200 });
+  // 1. Contatos — pagina tudo e filtra por updated_at localmente
+  const respC = await listarTodosContatos({ maxPaginas, porPagina: 200 });
   if (!respC.ok) {
     return { fonte: "clint", contatos: 0, chats: 0, mensagens: 0, erros: [respC.erro] };
   }
-  const contatos = respC.data.data ?? [];
+  // Filtra por `updated_at` DENTRO do período [desdeMs, ateMs].
+  const todosFiltrados = respC.contatos.filter((c) => {
+    const ref = c.updated_at || c.created_at;
+    if (!ref) return false;
+    const t = new Date(ref).getTime();
+    return t >= desdeMs && t <= ateMs;
+  });
+  // Ordena pelos mais recentes primeiro
+  todosFiltrados.sort((a, b) => {
+    const ta = new Date(a.updated_at || a.created_at || 0).getTime();
+    const tb = new Date(b.updated_at || b.created_at || 0).getTime();
+    return tb - ta;
+  });
+  const contatos = todosFiltrados.slice(0, maxContatos);
+  const ignorados = Math.max(0, todosFiltrados.length - contatos.length);
   if (contatos.length > 0) {
     const linhas = contatos.map((c) => ({
       clint_id: c.id,
       nome: c.name ?? null,
-      telefone: c.phone ?? null,
+      telefone: c.fullPhone ?? c.phone ?? null,
       email: c.email ?? null,
-      etapa_funil: c.funnel_stage ?? null,
-      ultima_mensagem_em: c.last_message_at ?? null,
+      etapa_funil: null,                          // não vem em /v1/contacts — vem em deals (futuro)
+      ultima_mensagem_em: c.updated_at ?? c.created_at ?? null,
       metadados: c,
       sincronizado_em: new Date().toISOString(),
     }));
@@ -64,13 +95,13 @@ export async function sincronizarUltimos90Dias(opts: { dias?: number } = {}): Pr
   for (const c of contatos) {
     const respChats = await listarChatsDoContato(c.id);
     if (!respChats.ok) { erros.push(`chats ${c.id}: ${respChats.erro}`); continue; }
-    const chats = respChats.data.data ?? [];
+    const chats = (respChats.data.data ?? respChats.data.items ?? []);
 
     if (chats.length > 0) {
       const linhasChats = chats.map((ch) => ({
         clint_id: ch.id,
         contato_clint_id: c.id,
-        canal: ch.channel ?? null,
+        canal: (ch as any).channel ?? (ch.channel_account_id ? "whatsapp" : null),
         status: ch.status ?? null,
         ultima_mensagem_em: ch.last_message_at ?? null,
         metadados: ch,
@@ -82,19 +113,20 @@ export async function sincronizarUltimos90Dias(opts: { dias?: number } = {}): Pr
     }
 
     for (const ch of chats) {
-      const respMsgs = await listarMensagensDoChat(ch.id, { limite: 200 });
+      const respMsgs = await listarMensagensDoChat(ch.id, { limit: 200 });
       if (!respMsgs.ok) { erros.push(`msgs ${ch.id}: ${respMsgs.erro}`); continue; }
-      const msgs = respMsgs.data.data ?? [];
+      const msgs = (respMsgs.data.data ?? respMsgs.data.items ?? []);
       if (msgs.length === 0) continue;
       const linhasMsgs = msgs.map((m) => ({
         clint_id: m.id,
         chat_clint_id: ch.id,
-        direcao: m.direction === "inbound" ? "entrada" : "saida",
-        autor: m.author?.name ?? null,
+        // user_id preenchido = vendedora; null = cliente
+        direcao: m.user_id ? "saida" : "entrada",
+        autor: m.user_id ?? null,                 // só o id; nome do vendedor pode ser resolvido depois
         conteudo: m.content ?? null,
-        tipo: m.type ?? "text",
-        midia_url: m.media_url ?? null,
-        enviada_em: m.sent_at ?? null,
+        tipo: m.content_type ?? m.type ?? "text",
+        midia_url: m.content_url ?? null,
+        enviada_em: m.created_at ?? null,
         metadados: m,
         sincronizado_em: new Date().toISOString(),
       }));
@@ -104,7 +136,16 @@ export async function sincronizarUltimos90Dias(opts: { dias?: number } = {}): Pr
     }
   }
 
-  return { fonte: "clint", contatos: totalContatos, chats: totalChats, mensagens: totalMensagens, erros };
+  return {
+    fonte: "clint",
+    contatos: totalContatos,
+    chats: totalChats,
+    mensagens: totalMensagens,
+    total_no_clint: respC.contatos.length,
+    ignorados_por_limite: ignorados,
+    periodo: { desde: new Date(desdeMs).toISOString(), ate: new Date(ateMs).toISOString() },
+    erros,
+  };
 }
 
 // ── Mock data — usado quando CLINT_API_TOKEN não está configurada ────────

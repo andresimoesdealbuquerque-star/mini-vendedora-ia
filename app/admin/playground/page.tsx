@@ -4,8 +4,11 @@ import { useState } from "react";
 import { AbaTestar } from "./_components/AbaTestar";
 import { AbaEnsinar } from "./_components/AbaEnsinar";
 import { AbaRecuperar } from "./_components/AbaRecuperar";
+import { AbaAvaliar } from "./_components/AbaAvaliar";
+import { AbaPanorama } from "./_components/AbaPanorama";
+import { AbaAoVivo } from "./_components/AbaAoVivo";
 
-type Tab = "testar" | "ensinar" | "recuperar";
+type Tab = "testar" | "ensinar" | "recuperar" | "avaliar" | "panorama" | "aovivo";
 
 export default function Playground() {
   const [tab, setTab] = useState<Tab>("testar");
@@ -29,11 +32,23 @@ export default function Playground() {
         <button onClick={() => setTab("recuperar")} style={tabStyle(tab === "recuperar")}>
           🔥 Recuperar
         </button>
+        <button onClick={() => setTab("avaliar")} style={tabStyle(tab === "avaliar")}>
+          📊 Avaliar vendedoras
+        </button>
+        <button onClick={() => setTab("panorama")} style={tabStyle(tab === "panorama")}>
+          📈 Panorama
+        </button>
+        <button onClick={() => setTab("aovivo")} style={tabStyle(tab === "aovivo")}>
+          🟢 Ao Vivo
+        </button>
       </div>
 
       {tab === "testar" && <AbaTestar />}
       {tab === "ensinar" && <AbaEnsinar />}
       {tab === "recuperar" && <AbaRecuperar />}
+      {tab === "avaliar" && <AbaAvaliar />}
+      {tab === "panorama" && <AbaPanorama />}
+      {tab === "aovivo" && <AbaAoVivo />}
     </main>
   );
 }

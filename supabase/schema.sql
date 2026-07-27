@@ -210,6 +210,78 @@ create table if not exists mila_recuperacao (
 create index if not exists mila_recuperacao_status_idx on mila_recuperacao(status, criada_em desc);
 create index if not exists mila_recuperacao_contato_idx on mila_recuperacao(contato_clint_id);
 
+-- ──────────────────────────────────────────────────────────────────────────
+-- Usuários do Clint (vendedoras) + avaliações da Mila sobre o atendimento delas
+-- ──────────────────────────────────────────────────────────────────────────
+
+create table if not exists clint_usuarios (
+  clint_id text primary key,
+  nome text,
+  email text,
+  ativo boolean default true,
+  sincronizado_em timestamptz default now()
+);
+
+create table if not exists mila_avaliacoes_vendedor (
+  id uuid primary key default gen_random_uuid(),
+  vendedor_clint_id text not null references clint_usuarios(clint_id) on delete cascade,
+  -- escopo da avaliação
+  conversas_analisadas integer not null,
+  desde timestamptz,
+  ate timestamptz,
+  -- scores 0-10
+  score_geral numeric(3,1),
+  score_tempo_resposta numeric(3,1),
+  score_completude numeric(3,1),
+  score_tom numeric(3,1),
+  score_conversao numeric(3,1),
+  -- análise
+  pontos_fortes jsonb default '[]'::jsonb,
+  pontos_fracos jsonb default '[]'::jsonb,
+  exemplos jsonb default '[]'::jsonb,           -- [{ conversa_id, problema, sugestao }]
+  sugestoes_treinamento jsonb default '[]'::jsonb,
+  resumo_executivo text,
+  criada_em timestamptz default now()
+);
+
+create index if not exists mila_avaliacoes_vend_idx on mila_avaliacoes_vendedor(vendedor_clint_id, criada_em desc);
+
+-- ──────────────────────────────────────────────────────────────────────────
+-- Panorama de perda — Mila classifica cada conversa fechada/perdida com motivo
+-- ──────────────────────────────────────────────────────────────────────────
+
+create table if not exists mila_analise_perda (
+  id uuid primary key default gen_random_uuid(),
+  chat_clint_id text not null references clint_chats(clint_id) on delete cascade,
+  contato_clint_id text references clint_contatos(clint_id) on delete cascade,
+  vendedor_clint_id text,
+  desfecho text check (desfecho in ('fechado', 'perdido', 'em_andamento')),
+  motivo_principal text check (motivo_principal in (
+    'atendimento_demorado',
+    'vendedora_sumiu',
+    'erro_comercial',
+    'preco_alto',
+    'fora_do_escopo',
+    'vou_pensar',
+    'foi_pra_concorrencia',
+    'prazo_nao_bateu',
+    'sem_motivo_claro',
+    'fechado_com_sucesso',
+    'em_andamento'
+  )),
+  motivos_secundarios jsonb default '[]'::jsonb,
+  resumo text,
+  citacoes jsonb default '[]'::jsonb,        -- trechos da conversa que evidenciam
+  primeira_msg_em timestamptz,
+  ultima_msg_em timestamptz,
+  minutos_ate_primeira_resposta integer,      -- do cliente pra vendedora
+  criada_em timestamptz default now(),
+  unique(chat_clint_id)
+);
+create index if not exists mila_perda_desfecho_idx on mila_analise_perda(desfecho);
+create index if not exists mila_perda_motivo_idx on mila_analise_perda(motivo_principal);
+create index if not exists mila_perda_vendedor_idx on mila_analise_perda(vendedor_clint_id);
+
 -- View útil pro admin dashboard
 create or replace view leads_resumo as
 select
