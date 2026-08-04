@@ -97,20 +97,43 @@ export async function POST(req: NextRequest) {
   let tamanho = "—";
   let canal = "—";
   let clienteTel = "";
+  let leituraErro: string | null = null;
+  let rawTamanho: unknown = null;
+  let rawCanal: unknown = null;
   try {
-    const { data } = await arcodeck()
+    const { data, error } = await arcodeck()
       .from("projetos")
       .select("data")
       .eq("id", ev.projetoId as string)
       .single();
+    if (error) leituraErro = error.message;
     const p = (data?.data as Record<string, unknown>) || null;
     if (p) {
+      rawTamanho = p.tamanho;
+      rawCanal = p.canal;
       tamanho = TAMANHOS[p.tamanho as string] || "—";
       canal = CANAIS[p.canal as string] || "—";
       clienteTel = soDigitos(p.telefone as string);
+    } else if (!leituraErro) {
+      leituraErro = "projeto não encontrado";
     }
-  } catch {
-    /* segue sem os detalhes */
+  } catch (e) {
+    leituraErro = e instanceof Error ? e.message : String(e);
+  }
+
+  // Modo diagnóstico (?dry=1): não envia, só mostra o que foi lido.
+  if (req.nextUrl.searchParams.get("dry") === "1") {
+    return NextResponse.json({
+      ok: true,
+      dry: true,
+      projetoId: ev.projetoId,
+      leituraErro,
+      rawTamanho,
+      rawCanal,
+      tamanho,
+      canal,
+      clienteTel,
+    });
   }
 
   const cliente = String(ev.cliente || "Novo cliente");
