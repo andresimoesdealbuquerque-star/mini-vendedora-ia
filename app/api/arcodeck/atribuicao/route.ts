@@ -69,10 +69,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, ignorado: `sem WhatsApp cadastrado para "${projetista}"` });
   }
 
-  const templateId = process.env.CLINT_TEMPLATE_ID_ATRIBUICAO;
-  if (!templateId) {
-    return NextResponse.json({ ok: false, erro: "CLINT_TEMPLATE_ID_ATRIBUICAO não configurado" }, { status: 500 });
-  }
+  // template_id do "arco_novo_negocio" no Clint (env sobrescreve, se um dia mudar).
+  const templateId =
+    process.env.CLINT_TEMPLATE_ID_ATRIBUICAO || "c6168a50-fbdb-4b20-a983-f82009a1614a";
 
   // 1) Canal WhatsApp Oficial (por env ou descobrindo o primeiro conectado).
   let channelId = process.env.CLINT_CHANNEL_ACCOUNT_ID || "";
