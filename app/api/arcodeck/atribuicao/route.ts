@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { arcodeck } from "@/lib/arcodeck/client";
-import { buscarContatosPorTelefone, listarCanais, enviarTemplate } from "@/lib/clint/client";
+import { buscarContatosPorTelefone, listarCanais, listarTemplates, enviarTemplate } from "@/lib/clint/client";
 
 // Webhook do Supabase do Arco Deck: dispara quando entra um evento na tabela
 // `eventos`. Se for uma ATRIBUIÇÃO de projetista (a "distribuição" da Vitória),
@@ -69,10 +69,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, ignorado: `sem WhatsApp cadastrado para "${projetista}"` });
   }
 
-  // template_id do "arco_novo_negocio" no Clint (env sobrescreve, se um dia mudar).
-  const templateId =
-    process.env.CLINT_TEMPLATE_ID_ATRIBUICAO || "c6168a50-fbdb-4b20-a983-f82009a1614a";
-
   // 1) Canal WhatsApp Oficial (por env ou descobrindo o primeiro conectado).
   let channelId = process.env.CLINT_CHANNEL_ACCOUNT_ID || "";
   if (!channelId) {
@@ -83,6 +79,26 @@ export async function POST(req: NextRequest) {
     );
     if (!oficial) return NextResponse.json({ ok: false, erro: "nenhum canal WhatsApp Oficial conectado no Clint" }, { status: 502 });
     channelId = oficial.id;
+  }
+
+  // 2) Template: acha pelo NOME entre os APROVADOS (env com o id sobrescreve).
+  //    Assim, ao criar um novo modelo, basta manter o nome — não precisa mexer no código.
+  const templateNome = process.env.ARCODECK_TEMPLATE_NOME || "arco_lead_atribuido";
+  let templateId = process.env.CLINT_TEMPLATE_ID_ATRIBUICAO || "";
+  if (!templateId) {
+    const tpls = await listarTemplates(channelId);
+    if (tpls.ok) {
+      const t = (tpls.data.data || []).find(
+        (x) => x.name === templateNome && x.status === "APPROVED",
+      );
+      if (t) templateId = t.id;
+    }
+  }
+  if (!templateId) {
+    return NextResponse.json(
+      { ok: false, erro: `template "${templateNome}" não encontrado/aprovado no Clint` },
+      { status: 500 },
+    );
   }
 
   // 2) Contato do projetista no Clint (precisa existir como contato).
