@@ -208,6 +208,27 @@ export async function enviarMensagemImagem(input: {
   });
 }
 
+/**
+ * Envia uma mensagem de TEMPLATE (HSM) — funciona FORA da janela de 24h (é o
+ * jeito de iniciar conversa). O template precisa estar APROVADO no Clint.
+ * Variáveis vão em `parameters.body` (e `header`, se houver). Não há params de
+ * botão nesse endpoint — links dinâmicos devem ir no corpo do template.
+ */
+export async function enviarTemplate(input: {
+  channel_account_id: string;
+  contact_id: string;
+  template_id: string;
+  parameters?: { header?: string[]; body?: string[] };
+  chat_id?: string;
+}) {
+  return clintFetch<{
+    data: { success: boolean; message_id?: string; chat_id?: string; status?: string };
+  }>(`/v2/messages/template`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
 /** Busca contatos por telefone (útil pra achar duplicatas). */
 export async function buscarContatosPorTelefone(fullPhone: string) {
   const ddi = fullPhone.startsWith("+") ? fullPhone.slice(1, 3) : fullPhone.slice(0, 2);
@@ -228,6 +249,21 @@ export interface ChannelAccountClint {
 /** Lista canais conectados (WhatsApp Oficial, Instagram, etc). */
 export async function listarCanais() {
   return clintFetch<{ data: ChannelAccountClint[] }>(`/v2/channel-accounts?limit=20`);
+}
+
+export interface MessageTemplateClint {
+  id: string;
+  name?: string;
+  status?: string;
+  language?: string;
+  [k: string]: unknown;
+}
+
+/** Lista os templates (modelos) de um canal WhatsApp Oficial. */
+export async function listarTemplates(channelAccountId: string) {
+  return clintFetch<{ data: MessageTemplateClint[] }>(
+    `/v2/message-templates?channel_account_id=${encodeURIComponent(channelAccountId)}&limit=100`,
+  );
 }
 
 export interface UsuarioClint {
