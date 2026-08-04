@@ -101,12 +101,25 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // 2) Contato do projetista no Clint (precisa existir como contato).
-  const contatos = await buscarContatosPorTelefone(telefone);
-  if (!contatos.ok) return NextResponse.json({ ok: false, erro: `contato: ${contatos.erro}` }, { status: 502 });
-  const contato = (contatos.data.data || [])[0];
+  // 3) Contato do projetista no Clint (a busca do Clint às vezes volta vazia →
+  //    tenta até 3x antes de desistir).
+  let contato: { id: string } | null = null;
+  for (let tent = 0; tent < 3; tent++) {
+    const contatos = await buscarContatosPorTelefone(telefone);
+    if (contatos.ok) {
+      const c = (contatos.data.data || [])[0];
+      if (c?.id) {
+        contato = c;
+        break;
+      }
+    }
+    if (tent < 2) await new Promise((r) => setTimeout(r, 400));
+  }
   if (!contato?.id) {
-    return NextResponse.json({ ok: true, ignorado: `contato ${projetista} (${telefone}) não existe no Clint — cadastre-o uma vez` });
+    return NextResponse.json({
+      ok: true,
+      ignorado: `contato ${projetista} (${telefone}) não encontrado no Clint após 3 tentativas`,
+    });
   }
 
   // 3) Detalhes do projeto (resumo + telefone do cliente) no Supabase do Arco Deck.
