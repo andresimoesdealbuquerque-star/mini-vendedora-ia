@@ -103,7 +103,7 @@ export async function rodarOrquestrador(opts: { ignorarHorario?: boolean } = {})
         // upsert contatos (mínimo: id + nome) e chats
         const contatosSet = new Map();
         for (const ch of (r.data.data ?? [])) {
-          const c = ch.contact;
+          const c = (ch as any).contact as { id?: string; name?: string; ddi?: string; phone?: string } | undefined;
           if (c?.id) contatosSet.set(c.id, {
             clint_id: c.id, nome: c.name ?? null,
             telefone: c.ddi && c.phone ? `${c.ddi}${c.phone}` : (c.phone ?? null),
