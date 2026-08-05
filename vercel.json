@@ -1,10 +1,6 @@
 {
   "crons": [
     {
-      "path": "/api/cron/mila-atendimento",
-      "schedule": "* * * * *"
-    },
-    {
       "path": "/api/cron/followup",
       "schedule": "0 13 * * *"
     },
