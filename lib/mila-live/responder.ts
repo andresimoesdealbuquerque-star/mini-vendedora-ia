@@ -131,11 +131,19 @@ export async function gerarRespostaMila(ctx: ChatComContexto): Promise<RespostaM
       tokens.cache_read += (response.usage as any).cache_read_input_tokens ?? 0;
 
       const toolUses: Anthropic.ToolUseBlock[] = [];
+      const textsHop: string[] = [];
       for (const block of response.content) {
-        if (block.type === "text" && block.text.trim()) assistantTexts.push(block.text);
+        if (block.type === "text" && block.text.trim()) textsHop.push(block.text);
         else if (block.type === "tool_use") toolUses.push(block);
       }
-      if (response.stop_reason !== "tool_use" || toolUses.length === 0) break;
+
+      // FIX: só o texto do ÚLTIMO hop (após todas as tools) vai pro cliente.
+      // Antes acumulava e concatenava, gerando duplicação/desconexão.
+      if (response.stop_reason !== "tool_use" || toolUses.length === 0) {
+        assistantTexts.length = 0;
+        assistantTexts.push(...textsHop);
+        break;
+      }
 
       messages.push({ role: "assistant", content: response.content });
       const toolResults: Anthropic.ToolResultBlockParam[] = [];

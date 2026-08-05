@@ -70,12 +70,18 @@ export async function detectarMensagensNovas(opts: {
 
     if (msgs.length === 0) continue;
 
-    const ultima = msgs[msgs.length - 1] as any;
+    // Filtra reactions / events (não são mensagens de texto acionáveis)
+    const msgsAcionaveis = msgs.filter((m: any) =>
+      m.content_type !== "REACTION" && m.content_type !== "EVENT"
+    );
+    if (msgsAcionaveis.length === 0) continue;
+    const ultima = msgsAcionaveis[msgsAcionaveis.length - 1] as any;
     // Só responde se a ÚLTIMA mensagem foi do CLIENTE.
     // Clint marca: type=CUSTOMER → cliente | type=USER → vendedor/Mila/API
     if (ultima.type !== "CUSTOMER") continue;
     if (ultima.source === "API") continue;                // dupla proteção contra loop
     if (ultima.content_type === "EVENT") continue;        // evento, não é mensagem
+    if (ultima.content_type === "REACTION") continue;     // reação (emoji), não é msg
     // Ignora só se NEM texto NEM mídia
     const temTexto = !!ultima.content?.trim();
     const temMidia = !!ultima.content_url;
@@ -130,7 +136,7 @@ export async function detectarMensagensNovas(opts: {
       ultima_msg_cliente: conteudoUltima,
       ultima_msg_cliente_em: ultima.created_at ?? new Date().toISOString(),
       ultima_msg_e_imagem: eImagem,
-      historico: msgs.slice(-20).map((m: any) => {
+      historico: msgsAcionaveis.slice(-20).map((m: any) => {
         const tipoMsg = m.content_type || m.type || "TEXT";
         let conteudo = m.content ?? "";
 
@@ -164,7 +170,7 @@ export async function detectarMensagensNovas(opts: {
           midia_url: m.content_url ?? null,
           enviada_em: m.created_at ?? "",
         };
-      }),
+      }).filter((m: any) => m.conteudo && m.conteudo.trim()),  // garante zero msg vazia pro Claude
     });
   }
 

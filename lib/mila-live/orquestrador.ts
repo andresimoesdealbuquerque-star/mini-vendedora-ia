@@ -204,9 +204,27 @@ export async function rodarOrquestrador(opts: { ignorarHorario?: boolean } = {})
   const det = await detectarMensagensNovas({ maxChats: opts.ignorarHorario ? 100 : 30 });
   erros.push(...det.erros);
 
+  // FIX: dedupe por telefone. Clint às vezes cria contact_id novo pra mesmo
+  // telefone, então mesma pessoa aparece em vários chats OPEN pendentes.
+  // Processa só o chat mais recente por telefone.
+  const porTelefone = new Map<string, typeof det.msgs_novas[number]>();
+  const semTelefone: typeof det.msgs_novas = [];
+  for (const m of det.msgs_novas) {
+    const tel = m.contato_telefone?.replace(/\D/g, "") || "";
+    if (!tel) { semTelefone.push(m); continue; }
+    const existente = porTelefone.get(tel);
+    if (!existente || new Date(m.ultima_msg_cliente_em) > new Date(existente.ultima_msg_cliente_em)) {
+      porTelefone.set(tel, m);
+    }
+  }
+  const msgsDeduplicadas = [...porTelefone.values(), ...semTelefone];
+  if (msgsDeduplicadas.length < det.msgs_novas.length) {
+    erros.push(`dedupe telefone: ${det.msgs_novas.length} → ${msgsDeduplicadas.length}`);
+  }
+
   const umaHoraAtras = new Date(Date.now() - 60 * 60_000).toISOString();
 
-  for (const ctx of det.msgs_novas) {
+  for (const ctx of msgsDeduplicadas) {
     // Rate limit: no máximo 8 respostas/hora no mesmo chat.
     // Barreira contra loop bizarro (cliente respondendo/bot re-respondendo).
     const contagemQ = await supabase.from("mila_ao_vivo")
