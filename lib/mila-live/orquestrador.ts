@@ -38,7 +38,7 @@ export interface OrquestradorResultado {
   erros?: string[];
 }
 
-export async function rodarOrquestrador(): Promise<OrquestradorResultado> {
+export async function rodarOrquestrador(opts: { ignorarHorario?: boolean } = {}): Promise<OrquestradorResultado> {
   const timestamp = new Date().toISOString();
   const horario = descrevHorario();
   const cfg = await pegarConfig();
@@ -51,7 +51,8 @@ export async function rodarOrquestrador(): Promise<OrquestradorResultado> {
 
   // Horário humano → sai (a menos que esteja em modo simulação — aí roda em SHADOW
   // pra comparar com o atendimento humano; nada é enviado ao cliente)
-  if (eHorarioHumano() && !cfg.modo_simulacao) {
+  // opts.ignorarHorario pula essa trava (feriado local, teste manual, etc)
+  if (eHorarioHumano() && !cfg.modo_simulacao && !opts.ignorarHorario) {
     return { timestamp, horario, ativa: true, modo_simulacao: cfg.modo_simulacao,
              eHorarioHumano: true, motivo_saida: "Horário humano — silêncio" };
   }

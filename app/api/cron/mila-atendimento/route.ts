@@ -13,6 +13,7 @@ export async function GET(req: NextRequest) {
   if (process.env.CRON_SECRET && secret !== process.env.CRON_SECRET) {
     return NextResponse.json({ erro: "não autorizado" }, { status: 401 });
   }
-  const r = await rodarOrquestrador();
+  const ignorarHorario = req.nextUrl.searchParams.get("force") === "1";
+  const r = await rodarOrquestrador({ ignorarHorario });
   return NextResponse.json(r);
 }
