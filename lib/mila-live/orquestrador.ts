@@ -102,16 +102,20 @@ export async function rodarOrquestrador(opts: { ignorarHorario?: boolean } = {})
           sincronizado_em: new Date().toISOString(),
         })).filter((c: any) => c.contato_clint_id);
 
-        // upsert contatos (mínimo: id + nome) e chats
+        // Upsert contatos placeholder (só id — o /v2/chats/channel-account
+        // NÃO retorna o contact inline, só contact_id). Sem placeholder o FK
+        // do chat quebra. Sync-deals popula nome/telefone depois.
         const contatosSet = new Map();
         for (const chAny of brutos) {
           const ch: any = chAny;
-          const c: { id?: string; name?: string; ddi?: string; phone?: string } = ch.contact || {};
-          if (c.id) contatosSet.set(c.id, {
-            clint_id: c.id, nome: c.name ?? null,
-            telefone: c.ddi && c.phone ? `${c.ddi}${c.phone}` : (c.phone ?? null),
-            sincronizado_em: new Date().toISOString(),
-          });
+          const cid: string | undefined = ch.contact?.id ?? ch.contact_id;
+          if (!cid) continue;
+          const existente = contatosSet.get(cid) || { clint_id: cid, sincronizado_em: new Date().toISOString() };
+          if (ch.contact?.name && !existente.nome) existente.nome = ch.contact.name;
+          if (ch.contact?.phone && !existente.telefone) {
+            existente.telefone = ch.contact.ddi ? `${ch.contact.ddi}${ch.contact.phone}` : ch.contact.phone;
+          }
+          contatosSet.set(cid, existente);
         }
         let contatosErr = "", chatsErr = "";
         if (contatosSet.size) {
