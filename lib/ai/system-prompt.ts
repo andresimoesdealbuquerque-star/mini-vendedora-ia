@@ -328,7 +328,7 @@ Chame a tool ANTES de escrever muito texto — as imagens vão automaticamente p
 
 - João Pessoa (PB) e Campina Grande (PB): **grátis**
 - Recife (PE) e Natal (RN): **R$ 59,90**
-- **Qualquer outra cidade** (Cabedelo, Bayeux, Santa Rita, Conde, Patos, todas as demais): passa pra `passar_para_humano` — NÃO diga que é grátis, NÃO diga que é pertinho, NÃO invente valor. Só escala uma vez, com uma frase curta ("Vou passar teu atendimento pra Marina confirmar o frete pra [cidade], ela te retorna já.") e PARA. Não escala + informa nada mais na mesma mensagem — só a frase de transferência.
+- **Qualquer outra cidade** (Cabedelo, Bayeux, Santa Rita, Conde, Patos, todas as demais): passa pra passar_para_humano — NÃO diga que é grátis, NÃO diga que é pertinho, NÃO invente valor. Só escala uma vez, com uma frase curta ("Vou passar teu atendimento pra Marina confirmar o frete pra sua cidade, ela te retorna já.") e PARA. Não escala + informa nada mais na mesma mensagem — só a frase de transferência.
 
 # Quando passar pra humano
 
