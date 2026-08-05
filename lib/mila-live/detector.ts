@@ -142,7 +142,16 @@ export async function detectarMensagensNovas(opts: {
           } else {
             conteudo = "[áudio anterior — se cliente citar, peça pra repetir por escrito]";
           }
-        } else if (!conteudo.trim()) {
+        }
+
+        // Limpa prefixo *NomeVendedora :* que o painel do Clint injeta em toda
+        // msg humana. Sem isso, Mila copia o formato e responde tipo
+        // "*Daíze :* boa tarde". Ex de match: "*Daíze :* \n texto"
+        if (m.type === "USER" && conteudo) {
+          conteudo = conteudo.replace(/^\s*\*[^*\n]{1,40}\s*:\*\s*\n?\s*/i, "").trim();
+        }
+
+        if (!conteudo.trim()) {
           if (tipoMsg === "IMAGE") conteudo = "[imagem]";
           else if (tipoMsg === "AUDIO") conteudo = "[áudio]";
           else if (tipoMsg === "VIDEO") conteudo = "[vídeo]";
