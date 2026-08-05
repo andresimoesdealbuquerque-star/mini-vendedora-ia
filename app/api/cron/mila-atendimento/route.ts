@@ -14,6 +14,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ erro: "não autorizado" }, { status: 401 });
   }
   const ignorarHorario = req.nextUrl.searchParams.get("force") === "1";
-  const r = await rodarOrquestrador({ ignorarHorario });
+  const maxStr = req.nextUrl.searchParams.get("max");
+  const maxRespostas = maxStr ? Math.max(1, parseInt(maxStr, 10) || Infinity) : undefined;
+  const r = await rodarOrquestrador({ ignorarHorario, maxRespostas });
   return NextResponse.json(r);
 }

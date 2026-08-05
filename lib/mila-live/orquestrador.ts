@@ -41,7 +41,7 @@ export interface OrquestradorResultado {
   erros?: string[];
 }
 
-export async function rodarOrquestrador(opts: { ignorarHorario?: boolean } = {}): Promise<OrquestradorResultado> {
+export async function rodarOrquestrador(opts: { ignorarHorario?: boolean; maxRespostas?: number } = {}): Promise<OrquestradorResultado> {
   const timestamp = new Date().toISOString();
   const horario = descrevHorario();
   const cfg = await pegarConfig();
@@ -223,8 +223,13 @@ export async function rodarOrquestrador(opts: { ignorarHorario?: boolean } = {})
   }
 
   const umaHoraAtras = new Date(Date.now() - 60 * 60_000).toISOString();
+  const limiteRespostas = opts.maxRespostas ?? Infinity;
 
   for (const ctx of msgsDeduplicadas) {
+    if (respostas_enviadas >= limiteRespostas) {
+      erros.push(`atingiu maxRespostas=${limiteRespostas}, parando`);
+      break;
+    }
     // Rate limit: no máximo 8 respostas/hora no mesmo chat.
     // Barreira contra loop bizarro (cliente respondendo/bot re-respondendo).
     const contagemQ = await supabase.from("mila_ao_vivo")
