@@ -86,11 +86,13 @@ export async function rodarOrquestrador(opts: { ignorarHorario?: boolean } = {})
   // 0b. Sync direto do canal — pega chats novos que ainda não têm deal
   //     (contatos frescos que escreveram hoje). Só roda em ignorarHorario
   //     pra evitar carga extra no cron regular.
+  let sync_canal_diag = "";
   if (opts.ignorarHorario) {
     try {
       const r = await listarChatsDoCanal(CANAL_OFICIAL, { limit: 100 });
       if (r.ok) {
-        const linhasChats = (r.data.data ?? []).map((ch: any) => ({
+        const brutos = r.data.data ?? [];
+        const linhasChats = brutos.map((ch: any) => ({
           clint_id: ch.id,
           contato_clint_id: ch.contact?.id ?? ch.contact_id,
           canal: "whatsapp",
@@ -102,16 +104,26 @@ export async function rodarOrquestrador(opts: { ignorarHorario?: boolean } = {})
 
         // upsert contatos (mínimo: id + nome) e chats
         const contatosSet = new Map();
-        for (const ch of (r.data.data ?? [])) {
-          const c = (ch as any).contact as { id?: string; name?: string; ddi?: string; phone?: string } | undefined;
-          if (c?.id) contatosSet.set(c.id, {
+        for (const chAny of brutos) {
+          const ch: any = chAny;
+          const c: { id?: string; name?: string; ddi?: string; phone?: string } = ch.contact || {};
+          if (c.id) contatosSet.set(c.id, {
             clint_id: c.id, nome: c.name ?? null,
             telefone: c.ddi && c.phone ? `${c.ddi}${c.phone}` : (c.phone ?? null),
             sincronizado_em: new Date().toISOString(),
           });
         }
-        if (contatosSet.size) await supabase.from("clint_contatos").upsert([...contatosSet.values()], { onConflict: "clint_id" });
-        if (linhasChats.length) await supabase.from("clint_chats").upsert(linhasChats, { onConflict: "clint_id" });
+        let contatosErr = "", chatsErr = "";
+        if (contatosSet.size) {
+          const cc = await supabase.from("clint_contatos").upsert([...contatosSet.values()], { onConflict: "clint_id" });
+          if (cc.error) contatosErr = cc.error.message;
+        }
+        if (linhasChats.length) {
+          const ch = await supabase.from("clint_chats").upsert(linhasChats, { onConflict: "clint_id" });
+          if (ch.error) chatsErr = ch.error.message;
+        }
+        sync_canal_diag = `sync canal: brutos=${brutos.length} chats_prep=${linhasChats.length} contatos_prep=${contatosSet.size} err_c=${contatosErr || "-"} err_ch=${chatsErr || "-"}`;
+        erros.push(sync_canal_diag);
       } else {
         erros.push(`sync canal: ${r.erro}`);
       }
