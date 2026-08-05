@@ -62,16 +62,18 @@ export async function rodarOrquestrador(opts: { ignorarHorario?: boolean } = {})
   let autorizacoes_pedidas = 0;
   let escaladas = 0;
 
-  // 0. Sync leve — pega deals com atividade nas últimas 6h pra ter cache fresco
-  //    Sem isso o detector só vê chats antigos.
+  // 0. Sync leve — pega deals com atividade recente pra ter cache fresco.
+  //    Janela maior (24h) quando estamos rodando fora de horário / force pra
+  //    cobrir feriado ou pausa: pega o dia inteiro.
   const agora = new Date();
-  const seisHoras = new Date(agora.getTime() - 6 * 60 * 60_000);
+  const janelaHoras = opts.ignorarHorario ? 24 : 6;
+  const janelaInicio = new Date(agora.getTime() - janelaHoras * 60 * 60_000);
   try {
     const syncRes = await sincronizarPorDeals({
-      dataInicio: seisHoras.toISOString(),
+      dataInicio: janelaInicio.toISOString(),
       dataFim: agora.toISOString(),
-      maxPaginas: 5,
-      maxDeals: 40,
+      maxPaginas: opts.ignorarHorario ? 10 : 5,
+      maxDeals: opts.ignorarHorario ? 100 : 40,
     });
     if ("erro" in syncRes) erros.push(`sync: ${syncRes.erro}`);
   } catch (e) {
@@ -143,7 +145,7 @@ export async function rodarOrquestrador(opts: { ignorarHorario?: boolean } = {})
   }
 
   // 3. Detecta mensagens novas de cliente
-  const det = await detectarMensagensNovas({ maxChats: 30 });
+  const det = await detectarMensagensNovas({ maxChats: opts.ignorarHorario ? 100 : 30 });
   erros.push(...det.erros);
 
   const umaHoraAtras = new Date(Date.now() - 60 * 60_000).toISOString();
