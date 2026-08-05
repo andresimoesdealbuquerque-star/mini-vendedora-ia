@@ -190,6 +190,22 @@ export async function enviarMensagem(input: {
 }
 
 /**
+ * Lista chats de um canal (WhatsApp Oficial, Instagram, etc), ordenados
+ * por last_message_at desc. Pega TODOS os status por padrão — filtre localmente.
+ * Use pra popular cache com chats novos que ainda não tem deal.
+ */
+export async function listarChatsDoCanal(
+  channelAccountId: string,
+  opts: { limit?: number; page?: number } = {},
+) {
+  const p = new URLSearchParams();
+  if (opts.limit) p.set("limit", String(opts.limit));
+  if (opts.page) p.set("page", String(opts.page));
+  const path = `/v2/chats/channel-account/${encodeURIComponent(channelAccountId)}${p.toString() ? `?${p}` : ""}`;
+  return clintFetch<RespListagem<ChatClint>>(path);
+}
+
+/**
  * Envia IMAGEM via URL pública. Clint suporta caption.
  * Mesma janela 24h que /text.
  */

@@ -12,6 +12,9 @@ import { gerarRespostaMila } from "./responder";
 import { pedirAutorizacao, processarAutorizacoesPendentes } from "./autorizacao";
 import { enviarViaContato, enviarImagemViaContato } from "@/lib/clint/send";
 import { sincronizarPorDeals } from "@/lib/clint/sync-deals";
+import { listarChatsDoCanal } from "@/lib/clint/client";
+
+const CANAL_OFICIAL = "26eb4825-f226-4ec3-94bc-d91f468e9510"; // ZAP MINI 26
 
 interface Config { ativa: boolean; modo_simulacao: boolean; }
 
@@ -78,6 +81,43 @@ export async function rodarOrquestrador(opts: { ignorarHorario?: boolean } = {})
     if ("erro" in syncRes) erros.push(`sync: ${syncRes.erro}`);
   } catch (e) {
     erros.push(`sync: ${e instanceof Error ? e.message : "erro"}`);
+  }
+
+  // 0b. Sync direto do canal — pega chats novos que ainda não têm deal
+  //     (contatos frescos que escreveram hoje). Só roda em ignorarHorario
+  //     pra evitar carga extra no cron regular.
+  if (opts.ignorarHorario) {
+    try {
+      const r = await listarChatsDoCanal(CANAL_OFICIAL, { limit: 100 });
+      if (r.ok) {
+        const linhasChats = (r.data.data ?? []).map((ch: any) => ({
+          clint_id: ch.id,
+          contato_clint_id: ch.contact?.id ?? ch.contact_id,
+          canal: "whatsapp",
+          status: ch.status ?? null,
+          ultima_mensagem_em: ch.last_message_at ?? null,
+          metadados: ch,
+          sincronizado_em: new Date().toISOString(),
+        })).filter((c: any) => c.contato_clint_id);
+
+        // upsert contatos (mínimo: id + nome) e chats
+        const contatosSet = new Map();
+        for (const ch of (r.data.data ?? [])) {
+          const c = ch.contact;
+          if (c?.id) contatosSet.set(c.id, {
+            clint_id: c.id, nome: c.name ?? null,
+            telefone: c.ddi && c.phone ? `${c.ddi}${c.phone}` : (c.phone ?? null),
+            sincronizado_em: new Date().toISOString(),
+          });
+        }
+        if (contatosSet.size) await supabase.from("clint_contatos").upsert([...contatosSet.values()], { onConflict: "clint_id" });
+        if (linhasChats.length) await supabase.from("clint_chats").upsert(linhasChats, { onConflict: "clint_id" });
+      } else {
+        erros.push(`sync canal: ${r.erro}`);
+      }
+    } catch (e) {
+      erros.push(`sync canal: ${e instanceof Error ? e.message : "erro"}`);
+    }
   }
 
   // 1. Resolve autorizações pendentes primeiro (pode liberar chats pra ação)
